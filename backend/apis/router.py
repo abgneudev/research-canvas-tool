@@ -1,10 +1,9 @@
-# router.py
 from apis.arxiv import search_arxiv
-from apis.rag import rag_search  # Import RAG search function
+from apis.rag import rag_search
+from apis.web import search_web
 from langgraph.prebuilt import ToolNode
 
-# Define the tools for the agent (both Arxiv and RAG)
-tools = [rag_search]
-
-# Create a ToolNode for integrating both tools
-tool_node = ToolNode(tools)
+# Define tool nodes for Arxiv, RAG, and Web Search
+tool_node = ToolNode(
+    tools=[search_arxiv, rag_search, search_web],
+)

@@ -9,7 +9,7 @@ export default function Home() {
 
   // Function to handle Arxiv search
   const searchArxiv = async () => {
-    const maxResults = 5; // Set the number of results you want
+    const maxResults = 5;
 
     const requestData = {
       query: query,
@@ -25,9 +25,9 @@ export default function Home() {
         body: JSON.stringify(requestData),
       });
 
-      const data = await response.json(); // Assuming the response is JSON
+      const data = await response.json();
       if (data.results) {
-        setResults(data.results); // Update the state with the results
+        setResults(data.results);
       } else {
         setResults([{ title: "Error", summary: "No results found." }]);
       }
@@ -39,7 +39,7 @@ export default function Home() {
 
   // Function to handle RAG search
   const searchRag = async () => {
-    const maxResults = 5; // Set the number of results you want
+    const maxResults = 5;
 
     const requestData = {
       query: query,
@@ -55,10 +55,37 @@ export default function Home() {
         body: JSON.stringify(requestData),
       });
 
-      const data = await response.json(); // Assuming the response is JSON
+      const data = await response.json();
       if (data.choices && data.choices[0] && data.choices[0].message) {
-        const content = data.choices[0].message.content; // Extract the content
-        setResults([{ title: "RAG Search Result", summary: content }]); // Update the state with the content
+        const content = data.choices[0].message.content;
+        setResults([{ title: "RAG Search Result", summary: content }]);
+      } else {
+        setResults([{ title: "Error", summary: "No results found." }]);
+      }
+    } catch (error) {
+      console.error("Error:", error);
+      setResults([{ title: "Error", summary: "Something went wrong." }]);
+    }
+  };
+
+  // Function to handle Web Search using Tavily
+  const searchWeb = async () => {
+    const requestData = {
+      query: query,
+    };
+
+    try {
+      const response = await fetch("http://localhost:8000/web-search", {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+        },
+        body: JSON.stringify(requestData),
+      });
+
+      const data = await response.json();
+      if (data.context) {
+        setResults([{ title: "Web Search Result", summary: data.context }]);
       } else {
         setResults([{ title: "Error", summary: "No results found." }]);
       }
@@ -78,10 +105,11 @@ export default function Home() {
           id="searchInput"
           placeholder="Enter search query"
           value={query}
-          onChange={(e) => setQuery(e.target.value)} // Update query state
+          onChange={(e) => setQuery(e.target.value)}
         />
         <button onClick={searchArxiv}>Search Arxiv</button>
         <button onClick={searchRag}>Search RAG</button>
+        <button onClick={searchWeb}>Search Web</button> {/* New Web Search Button */}
       </div>
 
       {/* Main content area for displaying results */}
@@ -92,7 +120,7 @@ export default function Home() {
               <div key={index} className="card">
                 <h3>{result.title}</h3>
                 <p>{result.summary}</p>
-                
+
                 {/* Display the PDF link for Arxiv results */}
                 {result.pdf_url && (
                   <div>

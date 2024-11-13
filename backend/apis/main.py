@@ -3,6 +3,7 @@ from copilotkit import CopilotKitSDK, LangGraphAgent
 from langgraph.graph import StateGraph, START, END, MessagesState
 from apis.rag import rag_search
 from apis.arxiv import search_arxiv
+from apis.web import search_web
 from apis.router import tool_node  # Updated router with both Arxiv and RAG tools
 import logging
 from fastapi.middleware.cors import CORSMiddleware
@@ -23,7 +24,6 @@ logger = logging.getLogger(__name__)
 # Define state graph using MessagesState
 state_graph = StateGraph(MessagesState)
 
-# selector function that decides whether to use Arxiv or RAG based on query content.
 def selector(state: MessagesState) -> str:
     last_message = state["messages"][-1].content.lower()
     
@@ -33,7 +33,11 @@ def selector(state: MessagesState) -> str:
     if "rag" in last_message:
         return "rag_search"
     
+    if "web" in last_message:
+        return "web_search"
+    
     return "finalAnswer"
+
 
 # Add nodes and edges to state graph based on architecture diagram.
 state_graph.add_node("selector", selector)
@@ -48,6 +52,11 @@ state_graph.add_edge("selector", "finalAnswer")
 state_graph.add_edge("fetch_arxiv", "finalAnswer")
 state_graph.add_edge("rag_search", "finalAnswer")
 
+state_graph.add_node("web_search", tool_node)  # Run Web Search if selected by selector.
+state_graph.add_edge("selector", "web_search")
+state_graph.add_edge("web_search", "finalAnswer")
+
+
 # Compile workflow into runnable graph.
 workflow = state_graph.compile()
 
@@ -55,10 +64,41 @@ workflow = state_graph.compile()
 sdk = CopilotKitSDK(
     agents=[LangGraphAgent(
         name="combined_agent",
-        description="An agent that searches for research papers using Arxiv or retrieves documents using RAG.",
+        description="An agent that searches for research papers using Arxiv, retrieves documents using RAG, or performs a web search using Tavily.",
         graph=workflow,
     )]
 )
+
+@app.post("/web-search")
+async def web_search_endpoint(payload: dict):
+    """
+    Endpoint to handle web search queries using Tavily.
+    
+    Args:
+        payload (dict): A dictionary containing the user's query.
+
+    Returns:
+        dict: The response from the web search process.
+    """
+    logger.info(f"Received payload: {payload}")
+    
+    query = payload.get("query", "")
+    
+    if not query:
+        return {"error": "No query provided"}
+    
+    try:
+        # Perform web search
+        response = search_web.invoke(query)
+        
+        logger.info(f"Web search response: {response}")
+        
+        return response
+    
+    except Exception as e:
+        logger.error(f"Error invoking Web Search tool: {str(e)}")
+        return {"error": str(e)}
+
 
 @app.post("/rag-search")
 async def rag_search_endpoint(payload: dict):
