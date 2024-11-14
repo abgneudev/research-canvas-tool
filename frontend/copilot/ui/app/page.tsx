@@ -23,8 +23,7 @@ export default function Home() {
   // Share `results` with CopilotKit using `useCopilotReadable`
   useCopilotReadable({
     description: "Search results from the user's query",
-    value: results,
-    id: "search-results", // Unique identifier for the shared state
+    value: results, // Unique identifier for the shared state
   });
 
   // Function to handle Arxiv search
@@ -100,7 +99,7 @@ export default function Home() {
   };
 
   return (
-    <SearchContext.Provider value={{ results }}>
+    <SearchContext.Provider value={{ results, setResults }}>
       <CopilotSidebar
         defaultOpen={true}
         instructions="You are assisting the user as best as you can. Answer in the best way possible given the data you have."

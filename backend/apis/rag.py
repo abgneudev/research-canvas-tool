@@ -1,21 +1,18 @@
 import os
 from dotenv import load_dotenv
-import requests
 import logging
 from openai import OpenAI
 from pinecone import Pinecone  # Correct import for Pinecone v3.0+
 from langchain_pinecone import Pinecone as PineconeVectorStore  # Correct import for LangChain Pinecone
-from langchain.embeddings.huggingface import HuggingFaceEmbeddings  # Correct import for HuggingFace embeddings
+from langchain_openai import OpenAIEmbeddings  # Updated import
+from transformers import CLIPProcessor, CLIPModel
+import torch
 
 # Load environment variables from .env file
 load_dotenv()
 
 # Configure logging
 logging.basicConfig(level=logging.INFO, format='%(asctime)s - %(levelname)s - %(message)s')
-
-# Load environment variables from .env file
-load_dotenv()
-logging.info("Loaded environment variables from .env file.")
 
 # Initialize Pinecone client using the new object-oriented approach (v3.0+)
 api_key = os.getenv("PINECONE_API_KEY")
@@ -28,38 +25,75 @@ else:
 pc = Pinecone(api_key=api_key)
 logging.info("Initialized Pinecone client.")
 
-# Define index name
-index_name = "index-f5e83a5988b93179f774fa79002beb34"
-logging.info(f"Using index name: {index_name}")
+# Define index names
+image_index_name = "md-images"
+text_index_name = "md-text"
 
-# Check if index exists, if not, create it
-if index_name not in pc.list_indexes().names():
-    logging.info(f"Index '{index_name}' does not exist. Creating a new index...")
+# Check if image index exists, if not, create it
+if image_index_name not in pc.list_indexes().names():
+    logging.info(f"Index '{image_index_name}' does not exist. Creating a new index...")
     pc.create_index(
-        name=index_name,
-        dimension=384,
+        name=image_index_name,
+        dimension=512,  # Dimension for image embeddings
         metric='cosine'
     )
-    logging.info(f"Index '{index_name}' created successfully.")
+    logging.info(f"Index '{image_index_name}' created successfully.")
 else:
-    logging.info(f"Index '{index_name}' already exists.")
+    logging.info(f"Index '{image_index_name}' already exists.")
 
-# Connect to the existing Pinecone index
-index = pc.Index(index_name)
-logging.info(f"Connected to Pinecone index: {index_name}")
+# Connect to the existing Pinecone image index
+image_index = pc.Index(image_index_name)
+logging.info(f"Connected to Pinecone index: {image_index_name}")
 
-# Load embeddings (use HuggingFace embeddings for compatibility with Mistral or other LLMs)
-embeddings = HuggingFaceEmbeddings(model_name="sentence-transformers/all-MiniLM-L6-v2")
-logging.info("HuggingFace embeddings model loaded: sentence-transformers/all-MiniLM-L6-v2")
+# Check if text index exists, if not, create it
+if text_index_name not in pc.list_indexes().names():
+    logging.info(f"Index '{text_index_name}' does not exist. Creating a new index...")
+    pc.create_index(
+        name=text_index_name,
+        dimension=1536,  # Dimension for text embeddings
+        metric='cosine'
+    )
+    logging.info(f"Index '{text_index_name}' created successfully.")
+else:
+    logging.info(f"Index '{text_index_name}' already exists.")
 
-# Initialize LangChain's Pinecone vector store (pass the Embeddings object directly)
-vector_store = PineconeVectorStore(index=index, embedding=embeddings)
-logging.info("Initialized LangChain's Pinecone vector store.")
+# Connect to the existing Pinecone text index
+text_index = pc.Index(text_index_name)
+logging.info(f"Connected to Pinecone index: {text_index_name}")
 
-# Create a retriever using the vector store's as_retriever method
-retriever = vector_store.as_retriever()
-logging.info("Retriever created from the vector store.")
+# Initialize text embeddings using OpenAI's Ada model
+text_embeddings = OpenAIEmbeddings(model="text-embedding-ada-002")
 
+# Load CLIP model and processor directly for image embeddings
+model_name = "openai/clip-vit-base-patch16"
+processor = CLIPProcessor.from_pretrained(model_name)
+clip_model = CLIPModel.from_pretrained(model_name)
+
+# Function to generate image embeddings using CLIP model
+def get_image_embedding(image):
+    inputs = processor(images=image, return_tensors="pt")
+    with torch.no_grad():
+        embedding = clip_model.get_image_features(**inputs)
+    return embedding.cpu().numpy().flatten()  # Flatten to 512-dimension vector
+
+logging.info("CLIP model and processor loaded for image embeddings.")
+
+# Initialize LangChain's Pinecone vector store for text
+text_vector_store = PineconeVectorStore(index=text_index, embedding=text_embeddings)
+logging.info("Initialized LangChain's Pinecone vector store for text.")
+
+# Initialize LangChain's Pinecone vector store for images
+def image_embeddings(image):
+    embedding = get_image_embedding(image)
+    return embedding
+
+logging.info("Initialized custom image embeddings function for images.")
+
+# Create retrievers using the vector stores' as_retriever method
+text_retriever = text_vector_store.as_retriever()
+logging.info("Text retriever created from the text vector store.")
+
+# NVIDIA API Key and Client Initialization
 nvidia_api_key = os.getenv("NVIDIA_API_KEY")
 if not nvidia_api_key:
     logging.error("NVIDIA_API_KEY is not set in the environment variables.")
@@ -68,7 +102,7 @@ else:
     logging.info("NVIDIA API key loaded successfully.")
 
 nvidia_api_url = "https://integrate.api.nvidia.com/v1"
-nvidia_model_name = "meta/llama3-8b-instruct"  # Updated model name
+nvidia_model_name = "meta/llama3-8b-instruct"
 
 # Initialize the NVIDIA client using OpenAI's interface
 client = OpenAI(
@@ -86,7 +120,7 @@ def call_nvidia_llama_api(prompt: str) -> dict:
     Returns:
         dict: The generated response from Llama3-8B-Instruct.
     """
-    logging.info(f"Calling NVIDIA Llama3 API with prompt: {prompt[:50]}...")  # Log only first 50 chars of prompt
+    logging.info(f"Calling NVIDIA Llama3 API with prompt: {prompt[:50]}...")
 
     try:
         completion = client.chat.completions.create(
@@ -96,7 +130,6 @@ def call_nvidia_llama_api(prompt: str) -> dict:
             max_tokens=200
         )
 
-        # Return the response from the API
         return completion
 
     except Exception as e:
@@ -116,24 +149,22 @@ def rag_search(query: str) -> dict:
     logging.info(f"Performing RAG search for query: {query}")
 
     # Retrieve relevant documents from Pinecone based on query
-    relevant_docs = retriever.get_relevant_documents(query)
+    relevant_text_docs = text_retriever.get_relevant_documents(query)
     
-    if relevant_docs:
-        logging.info(f"Retrieved {len(relevant_docs)} relevant documents from Pinecone.")
+    if relevant_text_docs:
+        logging.info(f"Retrieved {len(relevant_text_docs)} relevant text documents from Pinecone.")
     else:
-        logging.warning("No relevant documents found for the query.")
+        logging.warning("No relevant text documents found for the query.")
 
     # Prepare prompt by combining query and retrieved documents' content
-    # For simplicity, we are only using the query in this example.
-    
-    prompt = f"Query: {query}"
+    prompt = f"Query: {query}\nText Documents: {relevant_text_docs}"
     
     # Call NVIDIA Llama3-8B-Instruct API to generate a response based on the combined prompt
     llama_response = call_nvidia_llama_api(prompt)
 
     return llama_response
 
-# # Example usage:
+# Example usage:
 # query = "What is the capital of France?"
 # response = rag_search(query)
 # print(response)
