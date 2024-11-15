@@ -3,10 +3,10 @@
 import { useState, createContext, useContext } from "react";
 import { CopilotSidebar } from "@copilotkit/react-ui";
 import { useCopilotReadable } from "@copilotkit/react-core";
-import { marked } from "marked"; // Updated import for marked
-import { saveAs } from 'file-saver'; // Library to save generated PDF
-import { jsPDF } from "jspdf"; // Import jsPDF
-import "./styles.css"; // Import the CSS file
+import { marked } from "marked";
+import { saveAs } from "file-saver";
+import { jsPDF } from "jspdf";
+import "./styles.css";
 
 // Create context for sharing search results
 const SearchContext = createContext<any>(null);
@@ -20,16 +20,21 @@ export function useSearchContext() {
 }
 
 export default function Home() {
-  const [query, setQuery] = useState(""); // State for capturing query input
-  const [results, setResults] = useState<any[]>([]); // Initialize results as an empty array
-  const [combinedData, setCombinedData] = useState<string>(""); // State to store combined data
+  const [query, setQuery] = useState("");
+  const [results, setResults] = useState<any[]>([]);
+  const [combinedData, setCombinedData] = useState<string>("");
 
   // Share `results` with CopilotKit using `useCopilotReadable`
   useCopilotReadable({
     description: "Search results from the user's query",
     value: results,
-    id: "search-results", // Unique identifier for the shared state
+    id: "search-results",
   });
+
+  // Helper function to strip HTML tags
+  const stripHtmlTags = (html: string) => {
+    return html.replace(/<[^>]*>/g, "").replace(/&nbsp;/g, " ");
+  };
 
   // Function to handle Arxiv search
   const searchArxiv = async () => {
@@ -50,9 +55,8 @@ export default function Home() {
       const data = await response.json();
       const arxivResults = data.results || [{ title: "Error", summary: "No results found." }];
 
-      // Update both results and combinedData
       setResults((prevResults) => [...prevResults, ...arxivResults]);
-      updateCombinedData(arxivResults, "arxiv"); // Append Arxiv results to combined data with specific formatting
+      updateCombinedData(arxivResults, "arxiv");
     } catch (error) {
       console.error("Error:", error);
       setResults((prevResults) => [...prevResults, { title: "Error", summary: "Something went wrong." }]);
@@ -79,9 +83,8 @@ export default function Home() {
       const content = data.choices?.[0]?.message?.content;
       const ragResults = content ? [{ title: "RAG Search Result", summary: content }] : [{ title: "Error", summary: "No results found." }];
 
-      // Update both results and combinedData
       setResults((prevResults) => [...prevResults, ...ragResults]);
-      updateCombinedData(ragResults, "rag"); // Append RAG results to combined data with specific formatting
+      updateCombinedData(ragResults, "rag");
     } catch (error) {
       console.error("Error:", error);
       setResults((prevResults) => [...prevResults, { title: "Error", summary: "Something went wrong." }]);
@@ -106,9 +109,8 @@ export default function Home() {
       const data = await response.json();
       const webResults = data.context ? [{ title: "Web Search Result", summary: data.context }] : [{ title: "Error", summary: "No results found." }];
 
-      // Update both results and combinedData
       setResults((prevResults) => [...prevResults, ...webResults]);
-      updateCombinedData(webResults, "web"); // Append Web search results to combined data with specific formatting
+      updateCombinedData(webResults, "web");
     } catch (error) {
       console.error("Error:", error);
       setResults((prevResults) => [...prevResults, { title: "Error", summary: "Something went wrong." }]);
@@ -117,70 +119,61 @@ export default function Home() {
 
   const updateCombinedData = (newResults, source) => {
     let combinedText = "";
-  
-    // Add a newline before the query using <br> tags
+
     combinedText += `<br><strong>Query:</strong> ${query}<br><br>`;
-  
-    // Format results based on their source
-    newResults.forEach(result => {
-      if (source === 'arxiv') {
+
+    newResults.forEach((result) => {
+      if (source === "arxiv") {
         combinedText += `<strong>${result.title}</strong><br><strong>Summary:</strong> ${result.summary}<br><br>`;
         if (result.pdf_url) {
-          combinedText += `<a href="${result.pdf_url}" style="color: blue;">[Download PDF]</a><br><br>`; // HTML link with line breaks
+          combinedText += `<a href="${result.pdf_url}" style="color: blue;">[Download PDF]</a><br><br>`;
         }
-      } else if (source === 'rag') {
-        combinedText += `<strong>${result.title}</strong><br><br>${result.summary.replace(/\n/g, '<br>')}<br><br>`;
-      } else if (source === 'web') {
-        combinedText += `<strong>${result.title}</strong><br><br><strong>Response:</strong> ${result.summary.replace(/\n/g, '<br>')}<br><br>`;
+      } else if (source === "rag") {
+        combinedText += `<strong>${result.title}</strong><br><br>${result.summary.replace(/\n/g, "<br>")}<br><br>`;
+      } else if (source === "web") {
+        combinedText += `<strong>${result.title}</strong><br><br><strong>Response:</strong> ${result.summary.replace(/\n/g, "<br>")}<br><br>`;
         if (result.url) {
-          combinedText += `<a href="${result.url}" style="color: blue;">[Read More]</a><br><br>`; // HTML link with line breaks
+          combinedText += `<a href="${result.url}" style="color: blue;">[Read More]</a><br><br>`;
         }
       }
     });
-  
-    // Update combinedData with HTML content
-    setCombinedData(prev => prev + combinedText);
-  };
-  
 
-  // Convert the combinedData to Markdown format and render HTML
+    setCombinedData((prev) => prev + combinedText);
+  };
+
   const markdownContent = marked(combinedData);
 
-  // Function to generate PDF from combinedData
+  // Updated function to generate PDF from combinedData
   const generatePDF = () => {
     const doc = new jsPDF();
-
-    // Set font and styles
     doc.setFont("helvetica", "normal");
-
-    // Calculate page margins
+  
     const margin = 10;
     const pageHeight = doc.internal.pageSize.height;
+    const pageWidth = doc.internal.pageSize.width;
     let y = margin;
-
-    // Wrap text to fit the page width and handle multi-page generation
-    const lines = doc.splitTextToSize(combinedData, doc.internal.pageSize.width - margin * 2);
-    let currentLine = 0;
-
-    // Loop through the lines and add them to the PDF, creating new pages as needed
-    while (currentLine < lines.length) {
-      doc.text(lines.slice(currentLine, currentLine + 25), margin, y, {
-        maxWidth: doc.internal.pageSize.width - margin * 2,
-        lineHeightFactor: 1.5,
-      });
-      currentLine += 25;
-      y += 10;
-
-      // Check if we need to add a new page
-      if (y >= pageHeight - margin) {
+  
+    // Convert combinedData to plain text
+    const plainText = stripHtmlTags(combinedData.replace(/<br>/g, "\n"));
+  
+    // Split text into lines with appropriate width
+    const lines = doc.splitTextToSize(plainText, pageWidth - margin * 2);
+  
+    // Loop through lines and add them to the PDF
+    lines.forEach((line) => {
+      // Check if the current y-position exceeds the page height
+      if (y + 10 >= pageHeight - margin) {
         doc.addPage();
-        y = margin;
+        y = margin; // Reset y-position for new page
       }
-    }
-
+      doc.text(line, margin, y);
+      y += 10; // Increment y-position for next line
+    });
+  
     // Save the PDF
     doc.save("combined-data.pdf");
   };
+  
 
   return (
     <SearchContext.Provider value={{ results }}>
