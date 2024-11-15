@@ -1,8 +1,9 @@
 "use client";
 
-import { useState, createContext, useContext, useEffect } from "react";
+import { useState, createContext, useContext } from "react";
 import { CopilotSidebar } from "@copilotkit/react-ui";
 import { useCopilotReadable } from "@copilotkit/react-core";
+import { marked } from 'marked'; // Updated import for marked
 import "./styles.css"; // Import the CSS file
 
 // Create context for sharing search results
@@ -19,11 +20,13 @@ export function useSearchContext() {
 export default function Home() {
   const [query, setQuery] = useState(""); // State for capturing query input
   const [results, setResults] = useState<any[]>([]); // Initialize results as an empty array
+  const [combinedData, setCombinedData] = useState<string>(""); // State to store combined data
 
   // Share `results` with CopilotKit using `useCopilotReadable`
   useCopilotReadable({
     description: "Search results from the user's query",
-    value: results, // Unique identifier for the shared state
+    value: results,
+    id: "search-results", // Unique identifier for the shared state
   });
 
   // Function to handle Arxiv search
@@ -43,10 +46,14 @@ export default function Home() {
       }
 
       const data = await response.json();
-      setResults(data.results || [{ title: "Error", summary: "No results found." }]);
+      const arxivResults = data.results || [{ title: "Error", summary: "No results found." }];
+
+      // Update both results and combinedData
+      setResults((prevResults) => [...prevResults, ...arxivResults]);
+      updateCombinedData(arxivResults, 'arxiv'); // Append Arxiv results to combined data with specific formatting
     } catch (error) {
       console.error("Error:", error);
-      setResults([{ title: "Error", summary: "Something went wrong." }]);
+      setResults((prevResults) => [...prevResults, { title: "Error", summary: "Something went wrong." }]);
     }
   };
 
@@ -68,10 +75,14 @@ export default function Home() {
 
       const data = await response.json();
       const content = data.choices?.[0]?.message?.content;
-      setResults(content ? [{ title: "RAG Search Result", summary: content }] : [{ title: "Error", summary: "No results found." }]);
+      const ragResults = content ? [{ title: "RAG Search Result", summary: content }] : [{ title: "Error", summary: "No results found." }];
+
+      // Update both results and combinedData
+      setResults((prevResults) => [...prevResults, ...ragResults]);
+      updateCombinedData(ragResults, 'rag'); // Append RAG results to combined data with specific formatting
     } catch (error) {
       console.error("Error:", error);
-      setResults([{ title: "Error", summary: "Something went wrong." }]);
+      setResults((prevResults) => [...prevResults, { title: "Error", summary: "Something went wrong." }]);
     }
   };
 
@@ -91,15 +102,51 @@ export default function Home() {
       }
 
       const data = await response.json();
-      setResults(data.context ? [{ title: "Web Search Result", summary: data.context }] : [{ title: "Error", summary: "No results found." }]);
+      const webResults = data.context ? [{ title: "Web Search Result", summary: data.context }] : [{ title: "Error", summary: "No results found." }];
+
+      // Update both results and combinedData
+      setResults((prevResults) => [...prevResults, ...webResults]);
+      updateCombinedData(webResults, 'web'); // Append Web search results to combined data with specific formatting
     } catch (error) {
       console.error("Error:", error);
-      setResults([{ title: "Error", summary: "Something went wrong." }]);
+      setResults((prevResults) => [...prevResults, { title: "Error", summary: "Something went wrong." }]);
     }
   };
 
+  // Function to update combined data whenever new results are fetched
+  const updateCombinedData = (newResults, source) => {
+    let combinedText = "";
+  
+    // Add a newline before the query
+    combinedText += `\n\n**Query:** ${query}\n\n`;
+  
+    // Format results based on their source
+    newResults.forEach(result => {
+      if (source === 'arxiv') {
+        // Format Arxiv results with markdown specific for them
+        combinedText += `\n### ${result.title}\n\n**Summary:**\n${result.summary}\n\n`;
+        if (result.pdf_url) {
+          combinedText += `[Download PDF](${result.pdf_url})\n\n`;
+        }
+      } else if (source === 'rag') {
+        // Format RAG results with markdown
+        combinedText += `### ${result.title}\n\n${result.summary}\n\n`;
+      } else if (source === 'web') {
+        // Format Web results with markdown
+        combinedText += `### ${result.title}\n\n${result.summary}\n\n`;
+      }
+    });
+  
+    // Update combinedData with markdown-formatted content
+    setCombinedData(prev => prev + combinedText);
+  };
+  
+
+  // Convert the entire combinedData to Markdown format and render HTML
+  const markdownContent = marked(combinedData);
+
   return (
-    <SearchContext.Provider value={{ results, setResults }}>
+    <SearchContext.Provider value={{ results }}>
       <CopilotSidebar
         defaultOpen={true}
         instructions="You are assisting the user as best as you can. Answer in the best way possible given the data you have."
@@ -109,7 +156,6 @@ export default function Home() {
         }}
       >
         <div className="container">
-          {/* Sidebar content for search remains unchanged */}
           <div className="sidebar">
             <h1>Search</h1>
             <input
@@ -124,16 +170,14 @@ export default function Home() {
             <button onClick={searchWeb}>Search Web</button>
           </div>
 
-          {/* Main content area for displaying results */}
           <div className="main-content">
             {Array.isArray(results) && results.length > 0 ? (
               <div className="results-container">
-                {results.map((result: any, index: number) => (
+                {results.map((result, index) => (
                   <div key={index} className="card">
                     <h3>{result.title}</h3>
                     <p>{result.summary}</p>
 
-                    {/* Display the PDF link for Arxiv results */}
                     {result.pdf_url && (
                       <div>
                         <a
@@ -152,6 +196,11 @@ export default function Home() {
             ) : (
               <p>No results to display.</p>
             )}
+
+            <div className="combined-data-container">
+              <h2>Combined Output (Markdown)</h2>
+              <div dangerouslySetInnerHTML={{ __html: markdownContent }} />
+            </div>
           </div>
         </div>
       </CopilotSidebar>
