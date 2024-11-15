@@ -8,7 +8,7 @@ This repository focuses on building an end-to-end research tool utilizing an Air
 ## Data Flow and Architecture
 Below is an overview of the data flow and ETL architecture used in the project:
 
-![Airflow ETL and Data Flow Architecture](./images/airflow_etl_and_data_flow_architecture.png)
+![Airflow ETL and Data Flow Architecture](./diagram/research_tool_architecture.png)
 
 ## Live Application Links
 - **Deployed Application**: [Streamlit App Link]
