@@ -1,4 +1,4 @@
-#!/home/dhir/Big_Data_Systems_IA/research-canvas-tool/agent_env/bin/python3
+#!/home/dhir/Big_Data_Systems_IA/research-canvas-tool/agent_env/bin/python
 
 import sys
 import json

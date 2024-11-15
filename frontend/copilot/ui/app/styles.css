@@ -167,3 +167,17 @@ button:disabled {
   color: #333;
   margin-bottom: 10px;
 }
+
+.editable-output {
+  border: 1px solid #ccc;
+  padding: 10px;
+  min-height: 150px;
+  white-space: pre-wrap; /* Preserve new lines */
+  font-family: monospace;
+  overflow-y: auto;
+}
+
+.editable-output:empty:before {
+  content: "Edit the combined output here...";
+  color: #888;
+}
