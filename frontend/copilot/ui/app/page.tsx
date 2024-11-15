@@ -7,6 +7,7 @@ import { marked } from 'marked'; // Updated import for marked
 import "./styles.css"; // Import the CSS file
 import { saveAs } from "file-saver";
 import { jsPDF } from "jspdf";
+import React, { useEffect } from "react";
 
 // Create context for sharing search results
 const SearchContext = createContext<any>(null);
@@ -20,9 +21,11 @@ export function useSearchContext() {
 }
 
 export default function Home() {
+  const [files, setFiles] = useState<string[]>([]); // State to store list of S3 files
   const [query, setQuery] = useState(""); // State for capturing query input
   const [results, setResults] = useState<any[]>([]); // Initialize results as an empty array
   const [combinedData, setCombinedData] = useState<string>(""); // State to store combined data
+  const [searchType, setSearchType] = useState<string>(""); // State for the dropdown selection
 
   // Share `results` with CopilotKit using `useCopilotReadable`
   useCopilotReadable({
@@ -30,6 +33,32 @@ export default function Home() {
     value: results,
     id: "search-results", // Unique identifier for the shared state
   });
+
+  // Fetch S3 files from FastAPI endpoint
+  useEffect(() => {
+    const fetchFiles = async () => {
+        try {
+            const response = await fetch("http://localhost:8000/list-s3-files/");
+            if (!response.ok) {
+                throw new Error("Failed to fetch files from backend");
+            }
+            const data = await response.json();
+            if (data.files) {
+                // Filter to exclude 'pdfs/' and remove the 'pdfs/' prefix from each filename
+                const filteredFiles = data.files
+                    .filter(file => file.startsWith("pdfs/") && file !== "pdfs/") // Exclude "pdfs/" itself
+                    .map(file => file.replace("pdfs/", ""));
+                setFiles(filteredFiles);
+            } else {
+                setFiles([]);
+            }
+        } catch (error) {
+            console.error("Error fetching files:", error);
+        }
+    };
+
+    fetchFiles();
+  }, []);
 
   // Function to handle Smart Query
   const smartQuery = async () => {
@@ -191,6 +220,34 @@ export default function Home() {
     return str.replace(/<\/?[^>]+(>|$)/g, "");
   };
 
+  const handleViewCodelab = async () => {
+      try {
+          const response = await fetch("http://localhost:8000/convert-md-to-codelab", {
+              method: "POST",
+              headers: {
+                  "Content-Type": "application/json"
+              },
+              body: JSON.stringify({
+                  markdown: combinedData
+              })
+          });
+
+          if (!response.ok) {
+              throw new Error(`HTTP error! Status: ${response.status}`);
+          }
+
+          const data = await response.json();
+          window.open(data.url, "_blank"); // Open the CodeLabs URL in a new tab
+      } catch (error) {
+          // Improved error handling
+          if (error instanceof Error) {
+              console.error("Error viewing codelab:", error.message);
+          } else {
+              console.error("Unexpected error viewing codelab:", String(error));
+          }
+      }
+  };
+
   // Function to download combinedData as a .md file
   const generatePDF = () => {
     const doc = new jsPDF();
@@ -235,6 +292,23 @@ export default function Home() {
         <div className="container">
           <div className="sidebar">
             <h1>Search</h1>
+            {/* Dropdown to select the PDF name */}
+            <select
+              value={searchType}
+              onChange={(e) => {
+                setSearchType(e.target.value);
+              }}
+              className="dropdown"
+            >
+              <option value="" disabled>
+                Select a Document
+              </option>
+              {files.map((file, index) => (
+                <option key={index} value={file}>
+                  {file}
+                </option>
+              ))}
+            </select>
             <input
               type="text"
               id="searchInput"
@@ -246,6 +320,7 @@ export default function Home() {
             <button onClick={searchRag}>Search RAG</button>
             <button onClick={searchWeb}>Search Web</button>
             <button onClick={generatePDF}>Generate PDF</button>
+            <button onClick={handleViewCodelab}>Generate Codelab</button>
             <button onClick={smartQuery}>Smart Query</button>
           </div>
 

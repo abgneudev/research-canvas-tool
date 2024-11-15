@@ -13,12 +13,30 @@ from io import BytesIO
 import os
 from openai import OpenAI
 import re
+import tempfile
+import shutil
+import boto3
+from botocore.exceptions import NoCredentialsError, PartialCredentialsError
+from io import BytesIO
 
 # Initialize FastAPI app
 app = FastAPI()
 
 api_key = os.getenv("OPENAI_API_KEY")
 client = OpenAI(api_key=api_key)
+
+# Load environment variables
+aws_access_key_id = os.getenv("AWS_ACCESS_KEY")
+aws_secret_access_key = os.getenv("AWS_SECRET_ACCESS_KEY")
+aws_region = os.getenv("AWS_REGION")
+s3_bucket_name = os.getenv("BUCKET_NAME")
+
+s3_client = boto3.client(
+    "s3",
+    aws_access_key_id=aws_access_key_id,
+    aws_secret_access_key=aws_secret_access_key,
+    region_name=aws_region
+)
 
 # Enable CORS middleware to allow cross-origin requests
 app.add_middleware(
@@ -83,6 +101,109 @@ sdk = CopilotKitSDK(
         graph=workflow,
     )]
 )
+
+def run_command(command):
+    subprocess.run(command, shell=True, check=True)
+
+# Hardcoded metadata to be included in each Markdown file
+HARDCODED_METADATA = """id: nishi-tutorial
+summary: A brief codelab tutorial example
+categories: Tutorial
+tags: beginner, example
+authors: Nishita Matlani
+status: Draft
+feedback link: https://example.com/feedback
+"""
+
+# @app.post("/convert-md-to-codelab")
+# async def convert_md_to_codelab(payload: dict):
+#     """
+#     Endpoint to convert markdown content to a CodeLabs URL.
+
+#     Args:
+#         payload (dict): A dictionary containing the markdown content.
+
+#     Returns:
+#         dict: A dictionary containing the URL of the served codelab.
+#     """
+#     logger.info("Received payload for markdown-to-codelab conversion")
+
+#     markdown_content = payload.get("markdown", "")
+
+#     if not markdown_content:
+#         raise HTTPException(status_code=400, detail="No markdown content provided")
+
+#     try:
+#         # Create a fixed temporary file for storing the markdown content
+#         markdown_filename = "nishi.md"
+#         with open(markdown_filename, "w") as tmp_md_file:
+#             # Write the markdown content with hardcoded metadata to the file
+#             tmp_md_file.write(HARDCODED_METADATA + "\n\n" + markdown_content)
+
+#         # Verify if the file is written properly
+#         if os.stat(markdown_filename).st_size == 0:
+#             raise HTTPException(status_code=500, detail="Markdown file is empty after writing")
+
+#         # Check if claat tool is already installed, if not, install it
+#         if not os.path.exists("/usr/local/bin/claat"):
+#             try:
+#                 logger.info("Downloading claat tool...")
+#                 run_command("curl -LO https://github.com/googlecodelabs/tools/releases/latest/download/claat-darwin-amd64")
+#                 run_command("sudo mv claat-darwin-amd64 /usr/local/bin/claat")
+#                 run_command("chmod +x /usr/local/bin/claat")
+#             except subprocess.CalledProcessError as e:
+#                 logger.error(f"Error downloading or setting up claat: {str(e)}")
+#                 raise HTTPException(status_code=500, detail=f"Error downloading or setting up claat: {str(e)}")
+
+#         # Export codelab using claat
+#         try:
+#             logger.info(f"Exporting codelab from markdown file: {markdown_filename}")
+#             run_command(f"claat export {markdown_filename}")
+
+#             # The expected directory name after export
+#             export_dir_name = "nishi-tutorial"
+
+#             # Verify that the directory was created
+#             if not os.path.exists(export_dir_name):
+#                 raise FileNotFoundError("Exported directory could not be found")
+
+#             # Serve the codelab using combined command
+#             logger.info(f"Serving codelab inside directory: {export_dir_name}")
+#             run_command(f"cd nishi-tutorial")
+#             run_command(f"claat serve &")  # Run `cd` and `claat serve` together
+
+#             # Return the URL for the served codelab
+#             url = "http://localhost:9090"  # Default URL for `claat serve`
+#             return {"url": url}
+
+#         except subprocess.CalledProcessError as e:
+#             logger.error(f"Error during claat processing: {str(e)}")
+#             raise HTTPException(status_code=500, detail=f"Error converting markdown to CodeLabs URL: {str(e)}")
+
+#     except Exception as e:
+#         logger.error(f"Unexpected error: {str(e)}")
+#         raise HTTPException(status_code=500, detail=f"Unexpected error: {str(e)}")
+
+@app.get("/list-s3-files/")
+async def list_s3_files():
+    try:
+        # List objects within the specified S3 bucket
+        response = s3_client.list_objects_v2(Bucket=s3_bucket_name)
+
+        if "Contents" not in response:
+            return {"message": "No files found in the bucket."}
+
+        # Filter only files in the pdfs/ folder
+        file_names = [content["Key"] for content in response["Contents"] if content["Key"].startswith("pdfs/")]
+
+        return {"files": file_names}
+    
+    except NoCredentialsError:
+        raise HTTPException(status_code=500, detail="AWS credentials not found.")
+    except PartialCredentialsError:
+        raise HTTPException(status_code=500, detail="Incomplete AWS credentials provided.")
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=str(e))
 
 @app.post("/smart-query")
 async def smart_query_endpoint(payload: dict):
