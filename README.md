@@ -96,7 +96,7 @@ docker-compose up
 
 ## Documentation
 - **Codelabs**: [[Codelabs](https://codelabs-preview.appspot.com/?file_id=11XVdlzZ8DJotFKU9-hZb4OrUASjitlK7xsWqiVxxNzg#0)]
-- **Video Walkthrough**: [Video Link]
+- **Video Walkthrough**: [Video Link](https://northeastern-my.sharepoint.com/personal/gupta_abhinav_northeastern_edu/_layouts/15/stream.aspx?id=%2Fpersonal%2Fgupta%5Fabhinav%5Fnortheastern%5Fedu%2FDocuments%2FRecordings%2FCall%20with%20Dhir%20and%201%20other%2D20241115%5F162834%2DMeeting%20Recording%2Emp4&referrer=StreamWebApp%2EWeb&referrerScenario=AddressBarCopied%2Eview%2E5a6d007e%2D5878%2D4eb8%2D83b8%2D1c333bce4243&ga=1 )
 
 ## Contribution
 All team members contributed to this project. We attest that no external work was used.
