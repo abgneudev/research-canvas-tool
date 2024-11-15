@@ -7,6 +7,7 @@ from langchain_pinecone import Pinecone as PineconeVectorStore  # Correct import
 from langchain_openai import OpenAIEmbeddings  # Updated import
 from transformers import CLIPProcessor, CLIPModel
 import torch
+import boto3  # Add for S3 integration
 
 # Load environment variables from .env file
 load_dotenv()
@@ -28,6 +29,20 @@ logging.info("Initialized Pinecone client.")
 # Define index names
 image_index_name = "md-images"
 text_index_name = "md-text"
+
+# Initialize S3 client
+s3_client = boto3.client('s3')
+s3_bucket_name = os.getenv('S3_BUCKET_NAME')
+
+# Function to retrieve an image from S3
+def get_image_from_s3(image_key):
+    try:
+        logging.info(f"Retrieving image with key: {image_key} from S3.")
+        s3_object = s3_client.get_object(Bucket=s3_bucket_name, Key=image_key)
+        return s3_object['Body'].read()  # Returns image binary data
+    except Exception as e:
+        logging.error(f"Failed to retrieve image from S3: {e}")
+        return None
 
 # Check if image index exists, if not, create it
 if image_index_name not in pc.list_indexes().names():
@@ -143,13 +158,13 @@ def call_nvidia_llama_api(prompt: str) -> dict:
         logging.error(f"Failed to call NVIDIA API: {str(e)}")
         return {"error": str(e)}
 
-def rag_search(query: str, image=None) -> dict:
+def rag_search(query: str, image_key=None) -> dict:
     """
     Retrieves relevant text and image documents from Pinecone based on the query and generates a response using NVIDIA Llama3-8B-Instruct API.
 
     Args:
         query (str): The user's query.
-        image (Optional): The input image for image-based retrieval.
+        image_key (Optional): The key of the input image in S3 for image-based retrieval.
 
     Returns:
         dict: The generated response from Llama3-8B-Instruct.
@@ -165,14 +180,19 @@ def rag_search(query: str, image=None) -> dict:
 
     # Retrieve relevant image documents if an image is provided
     relevant_image_docs = []
-    if image is not None:
-        logging.info("Image provided. Performing image-based retrieval.")
-        image_embedding = get_image_embedding(image)
-        relevant_image_docs = image_retriever.get_relevant_documents(image_embedding)
-        if relevant_image_docs:
-            logging.info(f"Retrieved {len(relevant_image_docs)} relevant image documents from Pinecone.")
+    if image_key is not None:
+        logging.info("Image key provided. Retrieving image from S3.")
+        image = get_image_from_s3(image_key)
+        if image:
+            logging.info("Image retrieved from S3. Performing image-based retrieval.")
+            image_embedding = get_image_embedding(image)
+            relevant_image_docs = image_retriever.get_relevant_documents(image_embedding)
+            if relevant_image_docs:
+                logging.info(f"Retrieved {len(relevant_image_docs)} relevant image documents from Pinecone.")
+            else:
+                logging.warning("No relevant image documents found for the provided image.")
         else:
-            logging.warning("No relevant image documents found for the provided image.")
+            logging.error("Failed to retrieve image from S3.")
 
     # Prepare the prompt by combining query, text documents, and image documents (if any)
     text_content = "\n".join([doc.page_content for doc in relevant_text_docs])

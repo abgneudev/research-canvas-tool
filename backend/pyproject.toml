@@ -25,6 +25,11 @@ langchain-pinecone = {version = "^0.2.0", python = "<3.13"}
 pinecone-client = "^5.0.1"
 langchain-huggingface = "^0.1.2"
 tavily-python = "^0.5.0"
+boto3 = "1.35.62"
+markdown = "^3.7"
+pdfkit = "^1.0.0"
+
+
 
 [build-system]
 requires = ["poetry-core"]
