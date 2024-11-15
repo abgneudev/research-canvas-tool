@@ -93,6 +93,13 @@ logging.info("Initialized custom image embeddings function for images.")
 text_retriever = text_vector_store.as_retriever()
 logging.info("Text retriever created from the text vector store.")
 
+image_vector_store = PineconeVectorStore(index=image_index, embedding=image_embeddings)
+logging.info("Initialized LangChain's Pinecone vector store for images.")
+
+# Create image retriever using the vector store's as_retriever method
+image_retriever = image_vector_store.as_retriever()
+logging.info("Image retriever created from the image vector store.")
+
 # NVIDIA API Key and Client Initialization
 nvidia_api_key = os.getenv("NVIDIA_API_KEY")
 if not nvidia_api_key:
@@ -136,35 +143,43 @@ def call_nvidia_llama_api(prompt: str) -> dict:
         logging.error(f"Failed to call NVIDIA API: {str(e)}")
         return {"error": str(e)}
 
-def rag_search(query: str) -> dict:
+def rag_search(query: str, image=None) -> dict:
     """
-    Retrieves relevant documents from Pinecone based on the query and generates a response using NVIDIA Llama3-8B-Instruct API.
+    Retrieves relevant text and image documents from Pinecone based on the query and generates a response using NVIDIA Llama3-8B-Instruct API.
 
     Args:
         query (str): The user's query.
+        image (Optional): The input image for image-based retrieval.
 
     Returns:
         dict: The generated response from Llama3-8B-Instruct.
     """
     logging.info(f"Performing RAG search for query: {query}")
 
-    # Retrieve relevant documents from Pinecone based on query
+    # Retrieve relevant text documents from Pinecone
     relevant_text_docs = text_retriever.get_relevant_documents(query)
-    
     if relevant_text_docs:
         logging.info(f"Retrieved {len(relevant_text_docs)} relevant text documents from Pinecone.")
     else:
         logging.warning("No relevant text documents found for the query.")
 
-    # Prepare prompt by combining query and retrieved documents' content
-    prompt = f"Query: {query}\nText Documents: {relevant_text_docs}"
-    
+    # Retrieve relevant image documents if an image is provided
+    relevant_image_docs = []
+    if image is not None:
+        logging.info("Image provided. Performing image-based retrieval.")
+        image_embedding = get_image_embedding(image)
+        relevant_image_docs = image_retriever.get_relevant_documents(image_embedding)
+        if relevant_image_docs:
+            logging.info(f"Retrieved {len(relevant_image_docs)} relevant image documents from Pinecone.")
+        else:
+            logging.warning("No relevant image documents found for the provided image.")
+
+    # Prepare the prompt by combining query, text documents, and image documents (if any)
+    text_content = "\n".join([doc.page_content for doc in relevant_text_docs])
+    image_content = "\n".join([doc.page_content for doc in relevant_image_docs])
+    prompt = f"Query: {query}\nText Documents: {text_content}\nImage Documents: {image_content}"
+
     # Call NVIDIA Llama3-8B-Instruct API to generate a response based on the combined prompt
     llama_response = call_nvidia_llama_api(prompt)
 
     return llama_response
-
-# Example usage:
-# query = "What is the capital of France?"
-# response = rag_search(query)
-# print(response)
