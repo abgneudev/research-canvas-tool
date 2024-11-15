@@ -10,9 +10,15 @@ from fastapi.middleware.cors import CORSMiddleware
 import markdown
 import pdfkit
 from io import BytesIO
+import os
+from openai import OpenAI
+import re
 
 # Initialize FastAPI app
 app = FastAPI()
+
+api_key = os.getenv("OPENAI_API_KEY")
+client = OpenAI(api_key=api_key)
 
 # Enable CORS middleware to allow cross-origin requests
 app.add_middleware(
@@ -78,6 +84,65 @@ sdk = CopilotKitSDK(
     )]
 )
 
+@app.post("/smart-query")
+async def smart_query_endpoint(payload: dict):
+    """
+    Smart endpoint that uses an LLM to decide which search method to use based on user query.
+
+    Args:
+        payload (dict): A dictionary containing the user's query.
+
+    Returns:
+        dict: The response from the selected search endpoint.
+    """
+    try:
+        user_query = payload.get("query", "")
+        if not user_query:
+            raise HTTPException(status_code=400, detail="No query provided")
+
+        # Use OpenAI LLM to decide which search method to use
+        llm_response = client.chat.completions.create(
+            model="gpt-4o",
+            messages=[
+                {
+                    "role": "user",
+                    "content": (
+                        f"Analyze the user query: '{user_query}'. "
+                        "Choose the most appropriate search method from the following options:\n"
+                        "1. 'web' for general web search using online sources.\n"
+                        "2. 'rag' for searching documents and retrieving a summarized response.\n"
+                        "3. 'arxiv' for searching academic research papers on Arxiv.\n"
+                        "Please reply with only one option: 'web', 'rag', or 'arxiv'."
+                    )
+                }
+            ],
+        )
+
+        # Extract and log the LLM's decision
+        decision = re.sub(r'^["\']|["\']$', '', llm_response.choices[0].message.content.strip().lower())
+        logger.info(f"LLM Decision: '{decision}'")
+
+        # Call the appropriate endpoint based on the decision
+        if decision == "arxiv":
+            logger.info("Selected: Arxiv Search")
+            response = await handle_copilotkit_remote(payload)
+        elif decision == "rag":
+            logger.info("Selected: RAG Search")
+            response = await rag_search_endpoint(payload)
+        elif decision == "web":
+            logger.info("Selected: Web Search")
+            response = await web_search_endpoint(payload)
+        else:
+            logger.error(f"Unrecognized decision: '{decision}'")
+            raise HTTPException(status_code=400, detail="Unable to determine the search method.")
+
+        return response
+
+    except Exception as e:
+        logger.error(f"Error in smart-query: {str(e)}")
+        return {"error": str(e)}
+
+
 @app.post("/web-search")
 async def web_search_endpoint(payload: dict):
     """
@@ -112,32 +177,37 @@ async def web_search_endpoint(payload: dict):
 async def rag_search_endpoint(payload: dict):
     """
     Endpoint to handle RAG search queries.
-    
+
     Args:
         payload (dict): A dictionary containing the user's query.
-    
+
     Returns:
         dict: The response from the RAG search process.
     """
     logger.info(f"Received payload: {payload}")  # Log the incoming payload
-    
+
     query = payload.get("query", "")
-    
+
     if not query:
         return {"error": "No query provided"}
-    
+
     try:
         # Perform RAG search
         response = rag_search(query)
-        
-        # Log the response from the rag_search function
-        logger.info(f"RAG search response: {response}")
-        
-        return response
-    
+
+        # Extract the response content from the ChatCompletion object
+        content = response.choices[0].message.content.strip()
+
+        # Log the extracted content
+        logger.info(f"RAG search response content: {content}")
+
+        # Return the response in a format compatible with the frontend
+        return {"results": [{"title": "RAG Search Result", "summary": content}]}
+
     except Exception as e:
         logger.error(f"Error invoking RAG search: {str(e)}")
         return {"error": str(e)}
+
 
 @app.post("/copilotkit_remote")
 async def handle_copilotkit_remote(payload: dict):

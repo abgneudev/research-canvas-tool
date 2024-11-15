@@ -5,6 +5,8 @@ import { CopilotSidebar } from "@copilotkit/react-ui";
 import { useCopilotReadable } from "@copilotkit/react-core";
 import { marked } from 'marked'; // Updated import for marked
 import "./styles.css"; // Import the CSS file
+import { saveAs } from "file-saver";
+import { jsPDF } from "jspdf";
 
 // Create context for sharing search results
 const SearchContext = createContext<any>(null);
@@ -29,7 +31,43 @@ export default function Home() {
     id: "search-results", // Unique identifier for the shared state
   });
 
-  // Function to handle Arxiv search
+  // Function to handle Smart Query
+  const smartQuery = async () => {
+    const requestData = { query };
+  
+    try {
+      const response = await fetch("http://localhost:8000/smart-query", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify(requestData),
+      });
+  
+      if (!response.ok) {
+        throw new Error(`HTTP error! Status: ${response.status}`);
+      }
+  
+      const data = await response.json();
+  
+      // Check for both formats: `results` array or `context` string
+      let smartResults = [];
+      if (data.results && Array.isArray(data.results)) {
+        smartResults = data.results;
+      } else if (data.context) {
+        smartResults = [{ title: "Web Search Result", summary: data.context }];
+      } else {
+        smartResults = [{ title: "Error", summary: "No results found." }];
+      }
+  
+      // Update both results and combinedData
+      setResults((prevResults) => [...prevResults, ...smartResults]);
+      updateCombinedData(smartResults, 'smart'); // Append Smart Query results to combined data
+    } catch (error) {
+      console.error("Error:", error);
+      setResults((prevResults) => [...prevResults, { title: "Error", summary: "Something went wrong." }]);
+    }
+  };
+
+  // Function to handl  e Arxiv search
   const searchArxiv = async () => {
     const maxResults = 5;
     const requestData = { query, max_results: maxResults };
@@ -134,6 +172,8 @@ export default function Home() {
         if (result.url) {
           combinedText += `[Read More](${result.url})\n\n`;
         }
+      } else if (source === 'smart') {
+        combinedText += `<br>**Smart Query Result:**<br>${result.title}<br><br>${result.summary}<br>`;
       }
     });
 
@@ -141,20 +181,45 @@ export default function Home() {
     setCombinedData(prev => prev + combinedText);
   };
 
+
   // Convert the entire combinedData to Markdown format and render HTML
   const markdownContent = marked(combinedData);
 
+  // Function to remove HTML tags from a string
+  const stripHtmlTags = (str) => {
+    if (!str) return "";
+    return str.replace(/<\/?[^>]+(>|$)/g, "");
+  };
+
   // Function to download combinedData as a .md file
-  const downloadMarkdown = () => {
-    const blob = new Blob([combinedData], { type: "text/markdown" });
-    const url = URL.createObjectURL(blob);
-    const a = document.createElement("a");
-    a.href = url;
-    a.download = "combined_output.md";
-    document.body.appendChild(a);
-    a.click();
-    document.body.removeChild(a);
-    URL.revokeObjectURL(url);
+  const generatePDF = () => {
+    const doc = new jsPDF();
+    doc.setFont("helvetica", "normal");
+  
+    const margin = 10;
+    const pageHeight = doc.internal.pageSize.height;
+    const pageWidth = doc.internal.pageSize.width;
+    let y = margin;
+  
+    // Convert combinedData to plain text
+    const plainText = stripHtmlTags(combinedData.replace(/<br>/g, "\n"));
+  
+    // Split text into lines with appropriate width
+    const lines = doc.splitTextToSize(plainText, pageWidth - margin * 2);
+  
+    // Loop through lines and add them to the PDF
+    lines.forEach((line) => {
+      // Check if the current y-position exceeds the page height
+      if (y + 10 >= pageHeight - margin) {
+        doc.addPage();
+        y = margin; // Reset y-position for new page
+      }
+      doc.text(line, margin, y);
+      y += 10; // Increment y-position for next line
+    });
+  
+    // Save the PDF
+    doc.save("combined-data.pdf");
   };
 
   return (
@@ -180,7 +245,8 @@ export default function Home() {
             <button onClick={searchArxiv}>Search Arxiv</button>
             <button onClick={searchRag}>Search RAG</button>
             <button onClick={searchWeb}>Search Web</button>
-            <button onClick={downloadMarkdown}>Download Markdown</button>
+            <button onClick={generatePDF}>Generate PDF</button>
+            <button onClick={smartQuery}>Smart Query</button>
           </div>
 
           <div className="main-content">
