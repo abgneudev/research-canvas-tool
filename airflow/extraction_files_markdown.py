@@ -17,10 +17,9 @@ from docling.backend.pypdfium2_backend import PyPdfiumDocumentBackend
 logging.basicConfig(level=logging.INFO)
 _log = logging.getLogger(__name__)
 
-# AWS credentials
-AWS_ACCESS_KEY = "AKIAQEIP3T3BLTVRU5ES"
-AWS_SECRET_ACCESS_KEY = "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"
-AWS_REGION = "us-east-1"
+AWS_ACCESS_KEY = os.getenv("AWS_ACCESS_KEY")
+AWS_SECRET_ACCESS_KEY = os.getenv("AWS_SECRET_ACCESS_KEY")
+AWS_REGION = os.getenv("AWS_REGION")
 
 # Configure S3 client
 s3 = boto3.client(
