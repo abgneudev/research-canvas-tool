@@ -4,6 +4,8 @@
 
 This repository focuses on building an end-to-end research tool utilizing an Airflow pipeline to process documents, store vectors for fast similarity searches, and create a multi-agent research interface. The project involves parsing documents using Docling, storing vectors in Pinecone, and employing Langraph for a multi-agent system. Additionally, a user interaction interface, developed using Copilot coagent, will allow users to conduct research and save findings, culminating in a professional PDF report and structured Codelabs for clarity and future use.
 
+- **Codelabs**: [[Codelabs](https://codelabs-preview.appspot.com/?file_id=11XVdlzZ8DJotFKU9-hZb4OrUASjitlK7xsWqiVxxNzg#0)]
+- **Video Walkthrough**: [Video Link][(https://northeastern-my.sharepoint.com/:v:/g/personal/gupta_abhinav_northeastern_edu/EbrmYJED725Dms_wuTdLmfwBIWGccsxFCE79aT_SJEOJOw?e=yRpnTq)](https://drive.google.com/file/d/1uMfHafcHi5C2CgyFZuKCs0oCcgLPZLi5/view?usp=sharing)
 
 ## Data Flow and Architecture
 Below is an overview of the data flow and ETL architecture used in the project:
@@ -93,10 +95,6 @@ The application is containerized using Docker Compose. Run the following command
 ```bash
 docker-compose up
 ```
-
-## Documentation
-- **Codelabs**: [[Codelabs](https://codelabs-preview.appspot.com/?file_id=11XVdlzZ8DJotFKU9-hZb4OrUASjitlK7xsWqiVxxNzg#0)]
-- **Video Walkthrough**: [Video Link](https://northeastern-my.sharepoint.com/:v:/g/personal/gupta_abhinav_northeastern_edu/EbrmYJED725Dms_wuTdLmfwBIWGccsxFCE79aT_SJEOJOw?e=yRpnTq)
 
 ## Contribution
 All team members contributed to this project. We attest that no external work was used.
